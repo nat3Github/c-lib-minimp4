@@ -129,7 +129,8 @@ typedef enum
 {
     e_audio,
     e_video,
-    e_private
+    e_private,
+    e_audio_pcm // raw/uncompressed PCM audio (QuickTime 'sowt' sample entry)
 } track_media_kind_t;
 
 typedef struct
@@ -574,6 +575,8 @@ enum
     BOX_ipir    = FOUR_CHAR_INT( 'i', 'p', 'i', 'r' ),//IPIReferenceAtomType
     BOX_mp4s    = FOUR_CHAR_INT( 'm', 'p', '4', 's' ),//MPEGSampleEntryAtomType
     BOX_mp4a    = FOUR_CHAR_INT( 'm', 'p', '4', 'a' ),//MPEGAudioSampleEntryAtomType
+    BOX_sowt    = FOUR_CHAR_INT( 's', 'o', 'w', 't' ),//QuickTime uncompressed 16-bit little-endian PCM sample entry
+    BOX_chan    = FOUR_CHAR_INT( 'c', 'h', 'a', 'n' ),//QuickTime channel layout box (inside 'sowt')
     BOX_mp4v    = FOUR_CHAR_INT( 'm', 'p', '4', 'v' ),//MPEGVisualSampleEntryAtomType
 
     // http://www.itscj.ipsj.or.jp/sc29/open/29view/29n7644t.doc
@@ -1324,6 +1327,7 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
         switch (tr->info.track_media_kind)
         {
             case e_audio:
+            case e_audio_pcm:
                 handler_type = MP4E_HANDLER_TYPE_SOUN;
                 handler_ascii = "SoundHandler";
                 break;
@@ -1401,7 +1405,7 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
 
                 ATOM(BOX_minf);
 
-                    if (tr->info.track_media_kind == e_audio)
+                    if (tr->info.track_media_kind == e_audio || tr->info.track_media_kind == e_audio_pcm)
                     {
                         // Sound Media Header Box
                         ATOM_FULL(BOX_smhd, 0);
@@ -1498,6 +1502,37 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                                         WRITE_1(tr->vsps.data[2 + i]);
                                     }
                                 }
+                                END_ATOM;
+                            END_ATOM;
+                        }
+                        else if (tr->info.track_media_kind == e_audio_pcm)
+                        {
+                            // QuickTime uncompressed PCM sample entry
+                            // (SoundSampleDescription v0 + 'chan' box, matching
+                            // FFmpeg's mov muxer layout; 'sowt' == 16-bit little-endian).
+                            unsigned layout_tag = 0;
+                            if (tr->info.u.a.channelcount == 1)
+                                layout_tag = 0x00640001; // Mono
+                            else if (tr->info.u.a.channelcount == 2)
+                                layout_tag = 0x00650002; // Stereo
+
+                            ATOM(BOX_sowt);
+                                WRITE_4(0); WRITE_2(0); // reserved[6]
+                                WRITE_2(1); // data_reference_index
+                                WRITE_2(0); // version = 0
+                                WRITE_2(0); // revision
+                                WRITE_4(0); // vendor
+                                WRITE_2(tr->info.u.a.channelcount); // channel count
+                                WRITE_2(16); // sample size (bits)
+                                WRITE_2(-2); // compression id (-2 == 'sowt', little-endian 16-bit)
+                                WRITE_2(0); // packet size
+                                WRITE_4(tr->info.time_scale << 16); // sample rate (16.16 fixed point)
+
+                                ATOM(BOX_chan);
+                                    WRITE_4(0);          // version + flags
+                                    WRITE_4(layout_tag); // channel layout tag
+                                    WRITE_4(0);          // channel bitmap
+                                    WRITE_4(0);          // number of channel descriptions
                                 END_ATOM;
                             END_ATOM;
                         }
