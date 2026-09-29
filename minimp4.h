@@ -1461,7 +1461,8 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                                 WRITE_2(tr->info.u.a.channelcount); // channelcount
                                 WRITE_2(16); // samplesize
                                 WRITE_4(0);  // pre_defined+reserved
-                                WRITE_4((tr->info.time_scale << 16));  // samplerate == = {timescale of media}<<16;
+                                // samplerate == = {timescale of media}<<16; 16.16 fixed point: 0 when it doesn't fit (as ffmpeg)
+                                WRITE_4(tr->info.time_scale <= 0xFFFF ? (tr->info.time_scale << 16) : 0);
                             }
 
                                 ATOM_FULL(BOX_esds, 0);
@@ -1526,7 +1527,7 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                                 WRITE_2(16); // sample size (bits)
                                 WRITE_2(-2); // compression id (-2 == 'sowt', little-endian 16-bit)
                                 WRITE_2(0); // packet size
-                                WRITE_4(tr->info.time_scale << 16); // sample rate (16.16 fixed point)
+                                WRITE_4(tr->info.time_scale <= 0xFFFF ? (tr->info.time_scale << 16) : 0); // sample rate (16.16 fixed point, 0 when it doesn't fit)
 
                                 ATOM(BOX_chan);
                                     WRITE_4(0);          // version + flags
