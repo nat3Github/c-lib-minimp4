@@ -1,0 +1,12 @@
+.{
+    .name = .minimp4,
+    .fingerprint = 0x765e085ce1a2c962,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "minimp4.h",
+    },
+}

@@ -5,3 +5,5 @@ qemu-prof
 *.gcda
 *.gcno
 *.gcov
+.zig-cache/
+zig-out/
