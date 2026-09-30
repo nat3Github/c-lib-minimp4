@@ -1269,7 +1269,12 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
             WRITE_4(size - 8);
             WRITE_4(BOX_mdat);
         }
-        ERR(mux->write_callback(sizeof(box_ftyp), base, p - base, mux->token));
+        err = mux->write_callback(sizeof(box_ftyp), base, p - base, mux->token);
+        if (err)
+        {
+            free(base);
+            return err;
+        }
         p = base;
     }
 
@@ -1339,6 +1344,7 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                 handler_type = MP4E_HANDLER_TYPE_GESM;
                 break;
             default:
+                free(base);
                 return MP4E_STATUS_BAD_ARGUMENTS;
         }
 
