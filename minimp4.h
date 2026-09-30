@@ -3044,12 +3044,20 @@ broken_android_meta_hack:
                             ERROR("out of memory");
                         }
                         ts_capacity = (unsigned)new_capacity;
-                        tr->timestamp = (unsigned int*)realloc(tr->timestamp, ts_capacity * sizeof(unsigned));
-                        tr->duration  = (unsigned int*)realloc(tr->duration,  ts_capacity * sizeof(unsigned));
-                        if (!tr->timestamp || !tr->duration)
+                        // realloc() keeps the old block on failure: assign
+                        // through a temporary so MP4D_close() can free it.
+                        unsigned int *tmp = (unsigned int*)realloc(tr->timestamp, ts_capacity * sizeof(unsigned));
+                        if (!tmp)
                         {
                             ERROR("out of memory");
                         }
+                        tr->timestamp = tmp;
+                        tmp = (unsigned int*)realloc(tr->duration, ts_capacity * sizeof(unsigned));
+                        if (!tmp)
+                        {
+                            ERROR("out of memory");
+                        }
+                        tr->duration = tmp;
                     }
                     for (j = 0; j < sc; j++)
                     {
