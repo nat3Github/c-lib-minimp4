@@ -73,6 +73,9 @@ extern "C" {
 #define MP4_OBJECT_TYPE_HEVC                                   0x23
 // http://www.mp4ra.org/object.html 0xC0-E0  && 0xE2 - 0xFE are specified as "user private"
 #define MP4_OBJECT_TYPE_USER_PRIVATE                           0xC0
+// Apple Lossless: no MPEG-4 object type exists; 'alac' as a value outside the 8-bit range.
+// MP4E writes an 'alac' sample entry with the DSI (ALAC magic cookie) instead of 'mp4a' + 'esds'
+#define MP4_OBJECT_TYPE_ALAC                                   0x616C6163
 
 /************************************************************************/
 /*          API error codes                                             */
@@ -574,6 +577,7 @@ enum
     BOX_sync    = FOUR_CHAR_INT( 's', 'y', 'n', 'c' ),//OCRReferenceAtomType
     BOX_ipir    = FOUR_CHAR_INT( 'i', 'p', 'i', 'r' ),//IPIReferenceAtomType
     BOX_mp4s    = FOUR_CHAR_INT( 'm', 'p', '4', 's' ),//MPEGSampleEntryAtomType
+    BOX_alac    = FOUR_CHAR_INT( 'a', 'l', 'a', 'c' ),//AppleLosslessSampleEntry and ALACSpecificConfig
     BOX_mp4a    = FOUR_CHAR_INT( 'm', 'p', '4', 'a' ),//MPEGAudioSampleEntryAtomType
     BOX_sowt    = FOUR_CHAR_INT( 's', 'o', 'w', 't' ),//QuickTime uncompressed 16-bit little-endian PCM sample entry
     BOX_chan    = FOUR_CHAR_INT( 'c', 'h', 'a', 'n' ),//QuickTime channel layout box (inside 'sowt')
@@ -1441,8 +1445,12 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
 
                         if (tr->info.track_media_kind == e_audio || tr->info.track_media_kind == e_private)
                         {
+                            int is_alac = tr->info.track_media_kind == e_audio && tr->info.object_type_indication == MP4_OBJECT_TYPE_ALAC;
                             // AudioSampleEntry() assume MP4E_HANDLER_TYPE_SOUN
-                            if (tr->info.track_media_kind == e_audio)
+                            if (is_alac)
+                            {
+                                ATOM(BOX_alac);
+                            } else if (tr->info.track_media_kind == e_audio)
                             {
                                 ATOM(BOX_mp4a);
                             } else
@@ -1459,11 +1467,20 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                                 // AudioSampleEntry
                                 WRITE_4(0); WRITE_4(0); // reserved[2]
                                 WRITE_2(tr->info.u.a.channelcount); // channelcount
-                                WRITE_2(16); // samplesize
+                                WRITE_2(is_alac && tr->vsps.bytes > 2 + 5 ? tr->vsps.data[2 + 5] : 16); // samplesize (ALAC: cookie bitDepth)
                                 WRITE_4(0);  // pre_defined+reserved
                                 WRITE_4((tr->info.time_scale << 16));  // samplerate == = {timescale of media}<<16;
                             }
 
+                            if (is_alac)
+                            {
+                                ATOM_FULL(BOX_alac, 0); // ALACSpecificConfig: the DSI is the magic cookie
+                                for (i = 2; i < tr->vsps.bytes; i++)
+                                {
+                                    WRITE_1(tr->vsps.data[i]);
+                                }
+                            } else
+                            {
                                 ATOM_FULL(BOX_esds, 0);
                                 if (tr->vsps.bytes > 0)
                                 {
@@ -1502,6 +1519,7 @@ static int mp4e_flush_index(MP4E_mux_t *mux)
                                         WRITE_1(tr->vsps.data[2 + i]);
                                     }
                                 }
+                            }
                                 END_ATOM;
                             END_ATOM;
                         }
